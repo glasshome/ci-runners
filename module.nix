@@ -19,18 +19,28 @@ let
   '';
   indices = lib.range 1 cfg.count;
   units = toString (map (i: "github-runner-${userOf i}") indices);
+  api = "https://api.github.com/orgs/glasshome/actions/runners?per_page=100";
   standby = pkgs.writeShellScript "ci-runner-standby" ''
     set -o pipefail
     token=$(cat ${cfg.tokenFile})
     while :; do
       idle=$(${pkgs.curl}/bin/curl -fsS -m 10 \
         -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/orgs/glasshome/actions/runners?per_page=100" \
+        "${api}" \
         | ${pkgs.jq}/bin/jq --arg label ${lib.escapeShellArg (toString cfg.standbyFor)} \
           '[.runners[] | select(.status == "online" and (.busy | not) and any(.labels[]; .name == $label))] | length') \
         || exit 0
       [ "$idle" -eq 0 ] && exit 0
       sleep 30
+    done
+  '';
+  # A job killed mid-download leaves a browser directory without its binary, and puppeteer
+  # fails on it for every later job instead of downloading again.
+  dropBrokenBrowsers = pkgs.writeShellScript "ci-runner-drop-broken-browsers" ''
+    for dir in "$HOME"/.cache/puppeteer/*/*/; do
+      [ -d "$dir" ] || continue
+      ${pkgs.findutils}/bin/find "$dir" -type f -perm -u+x \( -name chrome -o -name chrome-headless-shell -o -name firefox \) \
+        | ${pkgs.gnugrep}/bin/grep -q . || rm -rf "$dir"
     done
   '';
   upgrade = ''
@@ -39,7 +49,16 @@ let
     mkdir -p "$state"
     token=$(cat ${cfg.tokenFile})
     export NIX_CONFIG="access-tokens = github.com=$token"
-    busy() { pgrep -u "$(systemctl show -p User --value "$1")" -f Runner.Worker >/dev/null; }
+    # Busy when a job runs here or GitHub has handed it one; unknown counts as busy.
+    busy() {
+      local unit=$1 user name
+      user=$(systemctl show -p User --value "$unit")
+      name="${config.networking.hostName}-''${user#ci-runner-}"
+      pgrep -u "$user" -f Runner.Worker >/dev/null && return 0
+      curl -fsS -m 10 -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" "${api}" \
+        | jq -e --arg name "$name" 'any(.runners[]; .name == $name and (.busy | not))' >/dev/null && return 1
+      return 0
+    }
     healthy() {
       for unit in ${units}; do
         case "$(systemctl show -p ActiveState --value "$unit")/$(systemctl show -p SubState --value "$unit")" in
@@ -49,8 +68,7 @@ let
       done
     }
 
-    new=$(nix build --no-link --print-out-paths --refresh --no-write-lock-file \
-      --override-input nixpkgs github:NixOS/nixpkgs/nixos-unstable \
+    new=$(nix build --no-link --print-out-paths --refresh \
       "${toString cfg.upgradeFlake}#nixosConfigurations.${config.networking.hostName}.config.system.build.toplevel")
     if [ "$new" != "$(readlink -f /run/current-system)" ] && [ "$new" != "$(cat "$state/refused" 2>/dev/null)" ]; then
       nix-env -p /nix/var/nix/profiles/system --set "$new"
@@ -127,7 +145,7 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       example = "github:glasshome/ci-runners";
-      description = "Flake this host pulls its configuration from every 15 minutes, with nixpkgs updated.";
+      description = "Flake this host pulls its configuration from every 15 minutes, at the nixpkgs its lock file pins.";
     };
 
     blockLocalNetwork = lib.mkOption {
@@ -154,17 +172,35 @@ in
           ct state established,related accept
           udp dport { 67, 547 } accept
           ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop
-          ip6 daddr fc00::/7 drop
-          ip6 daddr fe80::/10 meta l4proto != ipv6-icmp drop
         }
       '';
     };
+    # A LAN's global IPv6 addresses are not private ranges; GitHub and registries work over IPv4.
+    networking.enableIPv6 = lib.mkIf cfg.blockLocalNetwork false;
     networking.nameservers = lib.mkIf cfg.blockLocalNetwork [
       "1.1.1.1"
       "9.9.9.9"
-      "2606:4700:4700::1111"
     ];
     networking.dhcpcd.extraConfig = lib.mkIf cfg.blockLocalNetwork "nohook resolv.conf";
+
+    nix.settings = {
+      min-free = 5 * 1024 * 1024 * 1024;
+      max-free = 10 * 1024 * 1024 * 1024;
+    };
+    environment.systemPackages = [
+      (pkgs.writeShellScriptBin "ci-status" ''
+        for unit in ${units}; do
+          echo "== $unit: $(systemctl is-active "$unit")"
+          journalctl -u "$unit" -n 8 --no-pager -o cat
+        done
+        echo "== upgrade: $(systemctl show -p Result --value ci-runner-upgrade), last $(systemctl show -p ExecMainExitTimestamp --value ci-runner-upgrade)"
+        journalctl -u ci-runner-upgrade -n 5 --no-pager -o cat
+        [ -f /var/lib/ci-runner-upgrade/refused ] && echo "refused: $(cat /var/lib/ci-runner-upgrade/refused)"
+        echo "== system: $(readlink /run/current-system)"
+        df -h / | tail -1
+        free -h | head -2
+      '')
+    ];
 
     virtualisation.podman.enable = true;
     systemd.user.sockets.podman.wantedBy = [ "sockets.target" ];
@@ -286,10 +322,13 @@ in
             startLimitIntervalSec = 0;
             # A switch must not kill a running job; ci-runner-upgrade restarts idle runners itself.
             restartIfChanged = false;
-            serviceConfig = lib.mkIf (cfg.standbyFor != null) {
-              ExecStartPre = lib.mkBefore [ "+${standby}" ];
-              TimeoutStartSec = "infinity";
-            };
+            serviceConfig = lib.mkMerge [
+              { ExecStartPre = lib.mkBefore [ dropBrokenBrowsers ]; }
+              (lib.mkIf (cfg.standbyFor != null) {
+                ExecStartPre = lib.mkBefore [ "+${standby}" ];
+                TimeoutStartSec = "infinity";
+              })
+            ];
           };
         }) indices
       ))
@@ -303,6 +342,8 @@ in
           serviceConfig.Type = "oneshot";
           path = [
             config.nix.package
+            pkgs.curl
+            pkgs.jq
             pkgs.coreutils
             pkgs.procps
             pkgs.systemd
@@ -322,7 +363,7 @@ in
             };
             environment.HOME = homeOf i;
             script = ''
-              ${docker}/bin/docker system prune --all --force --filter until=168h
+              ${docker}/bin/docker system prune --all --force --filter until=72h
               ${docker}/bin/docker volume prune --force
               find ${homeOf i}/.bun/install/cache -mindepth 1 -maxdepth 1 -atime +30 -exec rm -rf {} + 2>/dev/null || true
             '';
@@ -350,7 +391,7 @@ in
           value = {
             wantedBy = [ "timers.target" ];
             timerConfig = {
-              OnCalendar = "weekly";
+              OnCalendar = "daily";
               Persistent = true;
               RandomizedDelaySec = "1h";
             };

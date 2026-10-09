@@ -1,0 +1,41 @@
+name: Update nixpkgs
+
+# Hosts build the nixpkgs flake.lock pins, so a bump reaches them only after
+# the VM test passed on it here.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: system-features = nixos-test benchmark big-parallel kvm
+      - name: Update the lock
+        run: nix flake update
+      - name: VM test
+        run: nix build .#checks.x86_64-linux.sandbox -L
+      - name: Every host builds
+        run: |
+          for host in $(nix eval --json .#nixosConfigurations --apply builtins.attrNames | jq -r '.[]'); do
+            nix build ".#nixosConfigurations.$host.config.system.build.toplevel" --no-link
+          done
+      - name: Commit
+        run: |
+          git diff --quiet flake.lock && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update flake.lock" -- flake.lock
+          git push
