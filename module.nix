@@ -127,7 +127,7 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       example = "github:glasshome/ci-runners";
-      description = "Flake this host pulls its configuration from hourly, with nixpkgs updated.";
+      description = "Flake this host pulls its configuration from every 15 minutes, with nixpkgs updated.";
     };
 
     blockLocalNetwork = lib.mkOption {
@@ -151,6 +151,7 @@ in
         chain output {
           type filter hook output priority 0; policy accept;
           oifname "lo" accept
+          ct state established,related accept
           udp dport { 67, 547 } accept
           ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop
           ip6 daddr fc00::/7 drop
@@ -235,6 +236,12 @@ in
           extraLabels = [ "glasshome-ci" ] ++ cfg.labels;
           extraPackages = with pkgs; [
             docker
+            # ldd: jdx/mise-action probes libc with it.
+            glibc.bin
+            # node-gyp: native modules without an install script (better-sqlite3) build on install.
+            gcc
+            gnumake
+            diffutils
             curl
             gh
             jq
@@ -249,6 +256,9 @@ in
             procps
           ];
           extraEnvironment = {
+            inherit (config.environment.variables) NIX_LD NIX_LD_LIBRARY_PATH;
+            # mise compiles every tool from source on NixOS by default; nix-ld runs its prebuilt ones.
+            MISE_ALL_COMPILE = "false";
             # Podman's default OCI format drops HEALTHCHECK.
             BUILDAH_FORMAT = "docker";
             HOME = homeOf i;
@@ -346,9 +356,9 @@ in
         ci-runner-upgrade = {
           wantedBy = [ "timers.target" ];
           timerConfig = {
-            OnBootSec = "10m";
-            OnUnitInactiveSec = "1h";
-            RandomizedDelaySec = "5m";
+            OnBootSec = "2m";
+            OnUnitInactiveSec = "15m";
+            RandomizedDelaySec = "2m";
           };
         };
       })

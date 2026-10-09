@@ -37,9 +37,9 @@ The VM drops outgoing traffic to private and link-local addresses (DHCP excepted
 
 ## Updates
 
-Every hour each host builds its configuration from this repository's `main` with the latest nixpkgs-unstable, which also keeps the runner inside GitHub's 30-day support window. A changed system is switched to; idle runners restart onto it at once, busy ones after their job. If a runner stays unhealthy for 10 minutes after the switch, the host rolls back and refuses that exact system until the configuration or nixpkgs moves. A changed kernel reboots the host between 03:00 and 05:00 UTC when no job runs.
+Every 15 minutes each host builds its configuration from this repository's `main` with the latest nixpkgs-unstable, which also keeps the runner inside GitHub's 30-day support window. A changed system is switched to; idle runners restart onto it at once, busy ones after their job. If a runner stays unhealthy for 10 minutes after the switch, the host rolls back and refuses that exact system until the configuration or nixpkgs moves. A changed kernel reboots the host between 03:00 and 05:00 UTC when no job runs.
 
-So a push to `main` reaches every runner within the hour, as root. CI runs the VM test on every push and pull request; merge only on green.
+So a push to `main` reaches every runner within 15 minutes, as root. CI runs the VM test on every push and pull request; merge only on green.
 
 Recovery when a host is down: pick the previous generation in the boot menu from the hypervisor console, or flash a fresh image.
 
