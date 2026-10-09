@@ -53,11 +53,23 @@ let
     docker tag probe 127.0.0.1:5000/probe:ci
     docker push 127.0.0.1:5000/probe:ci
     curl -fsS http://127.0.0.1:5000/v2/probe/manifests/ci -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' | grep -q '"mediaType"'
+    if curl -fsS -m 5 http://192.168.1.1:8000/; then echo "reached the local network"; exit 1; fi
+    if docker run --rm probe wget -q -T 5 -O - http://192.168.1.1:8000/; then echo "a container reached the local network"; exit 1; fi
     touch "$HOME/probe-passed"
   '';
 in
 {
   name = "ci-runner-sandbox";
+
+  nodes.lan =
+    { pkgs, ... }:
+    {
+      networking.firewall.allowedTCPPorts = [ 8000 ];
+      systemd.services.http = {
+        wantedBy = [ "multi-user.target" ];
+        script = "echo ok > /tmp/index.html && exec ''${pkgs.python3}/bin/python3 -m http.server 8000 --directory /tmp";
+      };
+    };
 
   nodes.machine =
     { config, lib, ... }:
@@ -111,10 +123,15 @@ in
     };
 
   testScript = ''
+    start_all()
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("docker-registry.service")
     machine.wait_until_succeeds("test -S /run/user/$(id -u ci-runner-1)/podman/podman.sock")
     machine.succeed("systemctl start probe.service || (journalctl -u probe --no-pager | tail -60; journalctl _UID=$(id -u ci-runner-1) --no-pager | grep -iE 'restart|cleanup|conmon|error' | tail -30; exit 1)")
     machine.succeed("test -f /var/lib/ci-runner-1/probe-passed")
+    lan.wait_for_open_port(8000)
+    lan.succeed("ip -4 addr | grep -q 192.168.1.1/")
+    machine.fail("curl -fsS -m 5 http://192.168.1.1:8000/")
+    machine.succeed("nft delete table inet ci-egress && curl -fsS -m 5 http://192.168.1.1:8000/ | grep -q ok")
   '';
 }

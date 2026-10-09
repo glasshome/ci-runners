@@ -130,6 +130,12 @@ in
       description = "Flake this host pulls its configuration from hourly, with nixpkgs updated.";
     };
 
+    blockLocalNetwork = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Drop outgoing traffic to private and link-local addresses except DHCP, and resolve through public DNS, so jobs reach the internet and nothing on the host's network.";
+    };
+
     heartbeatUrlFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -138,6 +144,27 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    networking.nftables.enable = lib.mkIf cfg.blockLocalNetwork true;
+    networking.nftables.tables.ci-egress = lib.mkIf cfg.blockLocalNetwork {
+      family = "inet";
+      content = ''
+        chain output {
+          type filter hook output priority 0; policy accept;
+          oifname "lo" accept
+          udp dport { 67, 547 } accept
+          ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop
+          ip6 daddr fc00::/7 drop
+          ip6 daddr fe80::/10 meta l4proto != ipv6-icmp drop
+        }
+      '';
+    };
+    networking.nameservers = lib.mkIf cfg.blockLocalNetwork [
+      "1.1.1.1"
+      "9.9.9.9"
+      "2606:4700:4700::1111"
+    ];
+    networking.dhcpcd.extraConfig = lib.mkIf cfg.blockLocalNetwork "nohook resolv.conf";
+
     virtualisation.podman.enable = true;
     systemd.user.sockets.podman.wantedBy = [ "sockets.target" ];
     virtualisation.containers = {

@@ -22,7 +22,7 @@ One CI job needs 3 GB of memory. With `count` above 1, set `memoryPerRunner` so 
 ## Flashing a host
 
 1. `./image.sh <host> ~/<host>.img`. It asks for the runner PAT and an optional console root password, and writes a fully allocated raw disk (24 GB) with both inside.
-2. Import it as the system disk of a new VM: 2 or more vCPUs, 5 GB RAM per runner, no shared folders, on a network segment that reaches the internet and nothing else on the local network. Grow the disk to 60 GB if the hypervisor allows; the root partition follows on boot.
+2. Import it as the system disk of a new VM: 2 or more vCPUs, 5 GB RAM per runner, no shared folders. Grow the disk to 60 GB if the hypervisor allows; the root partition follows on boot.
 3. Boot it and delete the `.img`. The runners appear under the organization's Settings, Actions, Runners.
 
 A host that travels must not start its VM on boot: a runner online on a foreign network joins the pool and takes jobs.
@@ -30,6 +30,10 @@ A host that travels must not start its VM on boot: a runner online on a foreign 
 **PAT:** fine-grained, resource owner `glasshome`, organization permission "Self-hosted runners: read and write", no repository access. It expires; reflash with a new one before the date on it.
 
 **Organization setting:** Settings, Actions, Runner groups, Default must not allow public repositories. This repository is public and runs its own CI on GitHub-hosted runners.
+
+## Network
+
+The VM drops outgoing traffic to private and link-local addresses (DHCP excepted) and resolves through public DNS, so jobs and their containers reach the internet and nothing on the host's network. Jobs run unprivileged and cannot change the rules. A host that can also sit on an isolated network segment should.
 
 ## Updates
 
