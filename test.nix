@@ -129,6 +129,7 @@ in
     machine.wait_until_succeeds("test -S /run/user/$(id -u ci-runner-1)/podman/podman.sock")
     machine.succeed("systemctl start probe.service || (journalctl -u probe --no-pager | tail -60; journalctl _UID=$(id -u ci-runner-1) --no-pager | grep -iE 'restart|cleanup|conmon|error' | tail -30; exit 1)")
     machine.succeed("test -f /var/lib/ci-runner-1/probe-passed")
+    machine.succeed("test \"$(stat -c %U /var/lib/ci-runner-1/work)\" = ci-runner-1")
     lan.wait_for_open_port(8000)
     lan.succeed("ip -4 addr | grep -q 192.168.1.1/")
     machine.fail("curl -fsS -m 5 http://192.168.1.1:8000/")

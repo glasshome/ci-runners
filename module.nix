@@ -206,6 +206,8 @@ in
       freetype
     ];
 
+    systemd.tmpfiles.rules = map (i: "d ${homeOf i}/work 0750 ${userOf i} ci-runner -") indices;
+
     users.groups.ci-runner = { };
     users.users = lib.listToAttrs (
       map (i: {
@@ -230,6 +232,8 @@ in
           name = "${config.networking.hostName}-${toString i}";
           inherit (cfg) tokenFile package;
           ephemeral = true;
+          # The default lives under /run, a RAM-sized tmpfs that a checkout plus node_modules fills.
+          workDir = "${homeOf i}/work";
           replace = true;
           user = userOf i;
           group = "ci-runner";
