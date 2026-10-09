@@ -17,12 +17,6 @@ let
     mkdir -p "$XDG_RUNTIME_DIR"
     exec ${podman}/bin/podman --remote --url "$socket" "$@"
   '';
-  # The runner evaluates hashFiles() with externals/node20, which nixpkgs no longer ships.
-  runnerPackage = cfg.package.overrideAttrs (old: {
-    postInstall = (old.postInstall or "") + ''
-      [ -e $out/lib/externals/node20 ] || ln -s ${pkgs.nodejs_24} $out/lib/externals/node20
-    '';
-  });
   indices = lib.range 1 cfg.count;
   units = toString (map (i: "github-runner-${userOf i}") indices);
   api = "https://api.github.com/orgs/glasshome/actions/runners?per_page=100";
@@ -272,8 +266,7 @@ in
           enable = true;
           url = "https://github.com/glasshome";
           name = "${config.networking.hostName}-${toString i}";
-          inherit (cfg) tokenFile;
-          package = runnerPackage;
+          inherit (cfg) tokenFile package;
           ephemeral = true;
           # The default lives under /run, a RAM-sized tmpfs that a checkout plus node_modules fills.
           workDir = "${homeOf i}/work";
@@ -307,6 +300,8 @@ in
             inherit (config.environment.variables) NIX_LD NIX_LD_LIBRARY_PATH;
             # mise compiles every tool from source on NixOS by default; nix-ld runs its prebuilt ones.
             MISE_ALL_COMPILE = "false";
+            # hashFiles() and other internal scripts default to externals/node20, which nixpkgs no longer ships.
+            ACTIONS_RUNNER_FORCED_INTERNAL_NODE_VERSION = "node24";
             # Podman's default OCI format drops HEALTHCHECK.
             BUILDAH_FORMAT = "docker";
             HOME = homeOf i;
