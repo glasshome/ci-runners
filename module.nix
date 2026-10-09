@@ -242,7 +242,8 @@ in
             docker
             # ldd: jdx/mise-action probes libc with it.
             glibc.bin
-            # node-gyp: native modules without an install script (better-sqlite3) build on install.
+            # Native modules without an install script (better-sqlite3) run node-gyp on install.
+            node-gyp
             gcc
             gnumake
             diffutils
