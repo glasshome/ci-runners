@@ -57,6 +57,10 @@ let
     curl -fsS http://127.0.0.1:5000/v2/probe/manifests/ci -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' | grep -q '"mediaType"'
     if curl -fsS -m 5 http://192.168.1.1:8000/; then echo "reached the local network"; exit 1; fi
     if docker run --rm probe wget -q -T 5 -O - http://192.168.1.1:8000/; then echo "a container reached the local network"; exit 1; fi
+    docker run -d --name logs probe sh -c 'echo from-the-container; sleep 30'
+    sleep 3
+    docker logs logs | grep -q from-the-container || { echo "docker logs returned nothing"; docker logs logs; exit 1; }
+    docker rm -f logs
     touch "$HOME/probe-passed"
   '';
 in

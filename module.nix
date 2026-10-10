@@ -225,6 +225,8 @@ in
     systemd.user.sockets.podman.wantedBy = [ "sockets.target" ];
     virtualisation.containers = {
       registries.settings.unqualified-search-registries = [ "docker.io" ];
+      # journald would take container output, and `docker logs` through the socket reads none back.
+      containersConf.settings.containers.log_driver = "k8s-file";
       containersConf.settings.engine = {
         cgroup_manager = "cgroupfs";
         events_logger = "file";
