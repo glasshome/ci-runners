@@ -325,6 +325,9 @@ in
           serviceOverrides = import ./sandbox.nix { home = homeOf i; } // {
             Restart = lib.mkForce "always";
             RestartSec = "30s";
+            # The module denies capset; Chromium's zygote calls it to drop capabilities and cannot fork
+            # without it. Granting it adds nothing: the bounding set is empty and NoNewPrivileges holds.
+            SystemCallFilter = lib.mkAfter [ "capset" ];
           }
           // lib.optionalAttrs (cfg.memoryPerRunner != null) { MemoryMax = cfg.memoryPerRunner; };
         };

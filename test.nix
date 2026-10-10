@@ -25,6 +25,8 @@ let
   '';
   probe = pkgs.writeShellScript "probe" ''
     set -euxo pipefail
+    ${pkgs.chromium}/bin/chromium --headless --no-sandbox --disable-gpu --user-data-dir="$HOME/chromium" \
+      --dump-dom 'data:text/html,<p>rendered</p>' | grep -q rendered
     docker load -i ${base}
     cp -r ${context} ctx && chmod -R u+w ctx
     docker build -t probe ctx
