@@ -75,12 +75,15 @@ let
         | jq -e --arg name "$name" 'any(.runners[]; .name == $name and (.busy | not))' >/dev/null && return 1
       return 0
     }
+    # Up or starting, and its last run did not fail: a runner that fails before it registers
+    # cycles through "starting", while ephemeral runners also restart after every clean job.
     healthy() {
       for unit in ${units}; do
         case "$(systemctl show -p ActiveState --value "$unit")/$(systemctl show -p SubState --value "$unit")" in
           active/* | activating/start-pre) ;;
           *) return 1 ;;
         esac
+        [ "$(systemctl show -p Result --value "$unit")" = success ] || return 1
       done
     }
 
