@@ -15,12 +15,16 @@
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
       # ci-b takes jobs first; ci-a registers only while every ci-b runner is busy or offline.
       hosts = {
+        # 10 GB VM, 4 vCPU.
         ci-a = {
-          count = 1;
+          count = 2;
+          memoryPerRunner = "4500M";
           standbyFor = "fast";
         };
+        # 12 GB VM, 8 vCPU.
         ci-b = {
-          count = 1;
+          count = 3;
+          memoryPerRunner = "3500M";
           labels = [ "fast" ];
         };
       };
