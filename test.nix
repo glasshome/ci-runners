@@ -122,8 +122,15 @@ in
       };
     };
 
-  testScript = ''
+  testScript =
+    { nodes, ... }:
+    let
+      runner = nodes.machine.services.github-runners.ci-runner-1.package;
+    in
+    ''
     start_all()
+    # hashFiles() runs <runner root>/externals/node20 on runner 2.337.
+    machine.succeed("${runner}/lib/externals/node20/bin/node -e 1 && test -e ${runner}/lib/github-runner/hashFiles")
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("docker-registry.service")
     machine.wait_until_succeeds("test -S /run/user/$(id -u ci-runner-1)/podman/podman.sock")

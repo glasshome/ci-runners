@@ -17,6 +17,22 @@ let
     mkdir -p "$XDG_RUNTIME_DIR"
     exec ${podman}/bin/podman --remote --url "$socket" "$@"
   '';
+  # hashFiles() runs externals/node20 until runner 2.338; nixpkgs ships 2.337 with node24 only.
+  # A relinked copy (no rebuild) adds node20 -> node24. Remove once nixpkgs has 2.338.
+  relinkNode20 =
+    pkg:
+    pkgs.runCommand "${pkg.name}-node20" { inherit (pkg) version; } ''
+      cp -a ${pkg} $out
+      chmod -R u+w $out
+      grep -rlI ${pkg} $out | xargs sed -i "s|${pkg}|$out|g"
+      ln -s ${pkgs.nodejs_24} $out/lib/externals/node20
+    '';
+  # The runner module applies .override { nodeRuntimes }; keep that working on the copy.
+  runnerPackage =
+    if lib.versionAtLeast cfg.package.version "2.338" then
+      cfg.package
+    else
+      lib.makeOverridable (args: relinkNode20 (cfg.package.override args)) { };
   indices = lib.range 1 cfg.count;
   units = toString (map (i: "github-runner-${userOf i}") indices);
   api = "https://api.github.com/orgs/glasshome/actions/runners?per_page=100";
@@ -266,7 +282,8 @@ in
           enable = true;
           url = "https://github.com/glasshome";
           name = "${config.networking.hostName}-${toString i}";
-          inherit (cfg) tokenFile package;
+          inherit (cfg) tokenFile;
+          package = runnerPackage;
           ephemeral = true;
           # The default lives under /run, a RAM-sized tmpfs that a checkout plus node_modules fills.
           workDir = "${homeOf i}/work";
@@ -300,8 +317,6 @@ in
             inherit (config.environment.variables) NIX_LD NIX_LD_LIBRARY_PATH;
             # mise compiles every tool from source on NixOS by default; nix-ld runs its prebuilt ones.
             MISE_ALL_COMPILE = "false";
-            # hashFiles() and other internal scripts default to externals/node20, which nixpkgs no longer ships.
-            ACTIONS_RUNNER_FORCED_INTERNAL_NODE_VERSION = "node24";
             # Podman's default OCI format drops HEALTHCHECK.
             BUILDAH_FORMAT = "docker";
             HOME = homeOf i;
