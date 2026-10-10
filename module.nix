@@ -343,7 +343,8 @@ in
             # A switch must not kill a running job; ci-runner-upgrade restarts idle runners itself.
             restartIfChanged = false;
             serviceConfig = lib.mkMerge [
-              { ExecStartPre = lib.mkBefore [ dropBrokenBrowsers ]; }
+              # After the module's own steps: a first start has no token file yet, and the sandbox mounts it.
+              { ExecStartPre = lib.mkAfter [ dropBrokenBrowsers ]; }
               (lib.mkIf (cfg.standbyFor != null) {
                 ExecStartPre = lib.mkBefore [ "+${standby}" ];
                 TimeoutStartSec = "infinity";
