@@ -61,6 +61,7 @@ let
     sleep 3
     docker logs logs | grep -q from-the-container || { echo "docker logs returned nothing"; docker logs logs; exit 1; }
     docker rm -f logs
+    touch umask-probe && [ "$(stat -c %a umask-probe)" = 644 ] || { echo "checkout files are not world-readable"; exit 1; }
     touch "$HOME/probe-passed"
   '';
 in

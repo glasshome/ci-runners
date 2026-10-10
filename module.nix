@@ -333,6 +333,9 @@ in
             # The module denies capset; Chromium's zygote calls it to drop capabilities and cannot fork
             # without it. Granting it adds nothing: the bounding set is empty and NoNewPrivileges holds.
             SystemCallFilter = lib.mkAfter [ "capset" ];
+            # The module's 0066 makes checkouts owner-only; COPY keeps that, and a non-root
+            # process in the image cannot read its own source. Hosted runners use 0022.
+            UMask = lib.mkForce "0022";
           }
           // lib.optionalAttrs (cfg.memoryPerRunner != null) { MemoryMax = cfg.memoryPerRunner; };
         };
