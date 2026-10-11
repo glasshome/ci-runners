@@ -32,4 +32,12 @@ printf '%s\n' "$hash" | nix shell nixpkgs#libguestfs-with-appliance -c guestfish
 install -m 600 /dev/null "$out"
 nix shell nixpkgs#qemu-utils -c qemu-img convert -f qcow2 -O raw -S 0 "$work" "$out"
 chmod 600 "$out"
+
+root_offset=$(nix shell nixpkgs#util-linux -c sfdisk -J "$out" \
+  | nix shell nixpkgs#jq -c jq -r '.partitiontable | .sectorsize as $s | .partitions[] | select(.name == "disk-main-root") | .start * $s')
+if ! nix shell nixpkgs#e2fsprogs -c e2fsck -fn "$out?offset=$root_offset" >/dev/null; then
+  rm -f "$out"
+  echo "the root filesystem of the image has errors; removed $out, build it again" >&2
+  exit 1
+fi
 echo "$out holds the runner PAT; delete it once the VM has booted."
