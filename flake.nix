@@ -21,10 +21,9 @@
           memoryPerRunner = "4500M";
           standbyFor = "fast";
         };
-        # 12 GB VM, 8 vCPU.
+        # 4 GB VM, 8 vCPU, on the travelling mini PC; three runners at 3500M once it has 16 GB.
         ci-b = {
-          count = 3;
-          memoryPerRunner = "3500M";
+          count = 1;
           labels = [ "fast" ];
         };
       };
