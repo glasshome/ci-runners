@@ -233,6 +233,9 @@ in
       };
     };
 
+    # oxc (knip, oxlint) reserves ~6 GiB up front and touches little; MemoryMax still caps real use.
+    boot.kernel.sysctl."vm.overcommit_memory" = 1;
+
     # Playwright's Chromium and mise-downloaded binaries are generic Linux builds.
     programs.nix-ld.enable = true;
     programs.nix-ld.libraries = with pkgs; [
