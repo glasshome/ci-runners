@@ -144,6 +144,10 @@ in
     machine.wait_until_succeeds("test -S /run/user/$(id -u ci-runner-1)/podman/podman.sock")
     machine.succeed("systemctl start probe.service || (journalctl -u probe --no-pager | tail -60; journalctl _UID=$(id -u ci-runner-1) --no-pager | grep -iE 'restart|cleanup|conmon|error' | tail -30; exit 1)")
     machine.succeed("test -f /var/lib/ci-runner-1/probe-passed")
+    # The 8 GB test disk is under the free-space floor, so the prune empties the store.
+    machine.succeed("systemctl start ci-runner-prune-1.service")
+    machine.succeed("journalctl -u ci-runner-prune-1 --no-pager | grep -q 'pruning the whole store'")
+    machine.succeed("test -z \"$(runuser -u ci-runner-1 -- env XDG_RUNTIME_DIR=/run/user/$(id -u ci-runner-1) podman images -q)\"")
     machine.succeed("test \"$(stat -c %U /var/lib/ci-runner-1/work)\" = ci-runner-1")
     lan.wait_for_open_port(8000)
     lan.succeed("ip -4 addr | grep -q 192.168.1.1/")

@@ -117,6 +117,8 @@ let
       systemctl reboot
     fi
   '';
+  # Two concurrent image builds unpack base layers and node_modules into the store and /var/tmp.
+  minFreeGiB = 15;
   userOf = i: "ci-runner-${toString i}";
   homeOf = i: "/var/lib/${userOf i}";
 in
@@ -355,7 +357,14 @@ in
             restartIfChanged = false;
             serviceConfig = lib.mkMerge [
               # After the module's own steps: a first start has no token file yet, and the sandbox mounts it.
-              { ExecStartPre = lib.mkAfter [ dropBrokenBrowsers ]; }
+              {
+                # Ephemeral runners restart after every job, so this frees space before each one.
+                ExecStartPre = lib.mkAfter [
+                  dropBrokenBrowsers
+                  "-+${pkgs.systemd}/bin/systemctl start ci-runner-prune-${toString i}.service"
+                ];
+                TimeoutStartSec = lib.mkDefault "15min";
+              }
               (lib.mkIf (cfg.standbyFor != null) {
                 ExecStartPre = lib.mkBefore [ "+${standby}" ];
                 TimeoutStartSec = "infinity";
@@ -395,8 +404,15 @@ in
             };
             environment.HOME = homeOf i;
             script = ''
-              ${docker}/bin/docker system prune --all --force --filter until=72h
+              free=$(df --output=avail -B1G / | tail -1 | tr -d ' ')
+              if [ "$free" -lt ${toString minFreeGiB} ]; then
+                echo "''${free}G free, under ${toString minFreeGiB}G: pruning the whole store"
+                ${docker}/bin/docker system prune --all --force
+              else
+                ${docker}/bin/docker system prune --all --force --filter until=72h
+              fi
               ${docker}/bin/docker volume prune --force
+              find /var/tmp -maxdepth 1 -user ${userOf i} -name 'container_images_*' -mmin +360 -exec rm -rf {} + 2>/dev/null || true
               find ${homeOf i}/.bun/install/cache -mindepth 1 -maxdepth 1 -atime +30 -exec rm -rf {} + 2>/dev/null || true
             '';
           };
