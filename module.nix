@@ -235,6 +235,10 @@ in
       };
     };
 
+    # The dash addon builds its arm64 image here; static QEMU is preloaded, so rootless containers need no emulator inside.
+    boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
+    boot.binfmt.preferStaticEmulators = true;
+
     # oxc (knip, oxlint) reserves ~6 GiB up front and touches little; MemoryMax still caps real use.
     boot.kernel.sysctl."vm.overcommit_memory" = 1;
 

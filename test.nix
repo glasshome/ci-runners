@@ -140,6 +140,7 @@ in
     machine.succeed("${runner}/lib/externals/node20/bin/node -e 1 && test -e ${runner}/lib/github-runner/hashFiles")
     machine.wait_for_unit("multi-user.target")
     machine.succeed("test \"$(sysctl -n vm.overcommit_memory)\" = 1")
+    machine.succeed("grep -qx 'flags: PF' /proc/sys/fs/binfmt_misc/aarch64-linux")
     machine.wait_for_unit("docker-registry.service")
     machine.wait_until_succeeds("test -S /run/user/$(id -u ci-runner-1)/podman/podman.sock")
     machine.succeed("systemctl start probe.service || (journalctl -u probe --no-pager | tail -60; journalctl _UID=$(id -u ci-runner-1) --no-pager | grep -iE 'restart|cleanup|conmon|error' | tail -30; exit 1)")
