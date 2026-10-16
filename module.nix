@@ -35,18 +35,28 @@ let
       lib.makeOverridable (args: relinkNode20 (cfg.package.override args)) { };
   indices = lib.range 1 cfg.count;
   units = toString (map (i: "github-runner-${userOf i}") indices);
-  api = "https://api.github.com/orgs/glasshome/actions/runners?per_page=100";
+  # Every org runner as one JSON array; stale offline registrations fill whole pages.
+  runners = pkgs.writeShellScript "ci-runners-list" ''
+    set -euo pipefail
+    token=$(cat ${cfg.tokenFile})
+    page=1
+    while :; do
+      body=$(${pkgs.curl}/bin/curl -fsS -m 10 \
+        -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/orgs/glasshome/actions/runners?per_page=100&page=$page")
+      echo "$body" | ${pkgs.jq}/bin/jq -c '.runners'
+      [ "$(echo "$body" | ${pkgs.jq}/bin/jq '.runners | length')" -lt 100 ] && break
+      page=$((page + 1))
+    done | ${pkgs.jq}/bin/jq -cs 'add'
+  '';
   standby = pkgs.writeShellScript "ci-runner-standby" ''
     set -o pipefail
-    token=$(cat ${cfg.tokenFile})
     while :; do
-      idle=$(${pkgs.curl}/bin/curl -fsS -m 10 \
-        -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" \
-        "${api}" \
+      idle=$(${runners} \
         | ${pkgs.jq}/bin/jq --arg label ${lib.escapeShellArg (toString cfg.standbyFor)} \
-          '[.runners[] | select(.status == "online" and (.busy | not) and any(.labels[]; .name == $label))] | length') \
-        || exit 0
-      [ "$idle" -eq 0 ] && exit 0
+          '[.[] | select(.status == "online" and (.busy | not) and any(.labels[]; .name == $label))] | length') \
+        || { echo "standby: runner list failed, registering"; exit 0; }
+      [ "$idle" -eq 0 ] && { echo "standby: no idle ${toString cfg.standbyFor} runner, registering"; exit 0; }
       sleep 30
     done
   '';
@@ -71,8 +81,7 @@ let
       user=$(systemctl show -p User --value "$unit")
       name="${config.networking.hostName}-''${user#ci-runner-}"
       pgrep -u "$user" -f Runner.Worker >/dev/null && return 0
-      curl -fsS -m 10 -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" "${api}" \
-        | jq -e --arg name "$name" 'any(.runners[]; .name == $name and (.busy | not))' >/dev/null && return 1
+      ${runners} | jq -e --arg name "$name" 'any(.[]; .name == $name and (.busy | not))' >/dev/null && return 1
       return 0
     }
     # Up or starting, and its last run did not fail: a runner that fails before it registers
