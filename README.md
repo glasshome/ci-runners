@@ -15,7 +15,7 @@ NixOS configuration for the self-hosted GitHub Actions runners of the glasshome 
 `flake.nix` lists them. Each runner registers as `<host>-<n>` with the label `glasshome-ci`.
 
 - `ci-b`: runners labelled `fast`, which take jobs first.
-- `ci-a`: one standby runner. It registers only while no `fast` runner is online and idle, so jobs prefer the faster host and still run while it is away.
+- `ci-a`: one standby runner. It registers only while no ci-b runner is online and idle, so jobs prefer the faster host and still run while it is away.
 
 One CI job needs 3 GB of memory. With `count` above 1, set `memoryPerRunner` so each runner's jobs size their parallelism to their share.
 

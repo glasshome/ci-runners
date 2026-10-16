@@ -35,29 +35,22 @@ let
       lib.makeOverridable (args: relinkNode20 (cfg.package.override args)) { };
   indices = lib.range 1 cfg.count;
   units = toString (map (i: "github-runner-${userOf i}") indices);
-  # Every org runner as one JSON array; stale offline registrations fill whole pages.
-  runners = pkgs.writeShellScript "ci-runners-list" ''
-    set -euo pipefail
-    token=$(cat ${cfg.tokenFile})
-    page=1
-    while :; do
-      body=$(${pkgs.curl}/bin/curl -fsS -m 10 \
-        -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/orgs/glasshome/actions/runners?per_page=100&page=$page")
-      echo "$body" | ${pkgs.jq}/bin/jq -c '.runners'
-      [ "$(echo "$body" | ${pkgs.jq}/bin/jq '.runners | length')" -lt 100 ] && break
-      page=$((page + 1))
-    done | ${pkgs.jq}/bin/jq -cs 'add'
+  # Exit 0 when the named runner is online and idle; looked up by name, since the org list
+  # fills with stale hosted-runner registrations.
+  idle = pkgs.writeShellScript "ci-runner-idle" ''
+    set -o pipefail
+    ${pkgs.curl}/bin/curl -fsS -m 10 \
+      -H "Authorization: Bearer $(cat ${cfg.tokenFile})" -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/orgs/glasshome/actions/runners?name=$1" \
+      | ${pkgs.jq}/bin/jq -e 'any(.runners[]; .status == "online" and (.busy | not))' >/dev/null
   '';
   standby = pkgs.writeShellScript "ci-runner-standby" ''
-    set -o pipefail
     while :; do
-      idle=$(${runners} \
-        | ${pkgs.jq}/bin/jq --arg label ${lib.escapeShellArg (toString cfg.standbyFor)} \
-          '[.[] | select(.status == "online" and (.busy | not) and any(.labels[]; .name == $label))] | length') \
-        || { echo "standby: runner list failed, registering"; exit 0; }
-      [ "$idle" -eq 0 ] && { echo "standby: no idle ${toString cfg.standbyFor} runner, registering"; exit 0; }
-      sleep 30
+      for name in ${lib.escapeShellArgs cfg.standbyFor}; do
+        ${idle} "$name" && { sleep 30; continue 2; }
+      done
+      echo "standby: none of ${toString cfg.standbyFor} idle, registering"
+      exit 0
     done
   '';
   # A job killed mid-download leaves a browser directory without its binary, and puppeteer
@@ -81,7 +74,7 @@ let
       user=$(systemctl show -p User --value "$unit")
       name="${config.networking.hostName}-''${user#ci-runner-}"
       pgrep -u "$user" -f Runner.Worker >/dev/null && return 0
-      ${runners} | jq -e --arg name "$name" 'any(.[]; .name == $name and (.busy | not))' >/dev/null && return 1
+      ${idle} "$name" && return 1
       return 0
     }
     # Up or starting, and its last run did not fail: a runner that fails before it registers
@@ -155,13 +148,14 @@ in
     labels = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      description = "Labels beside glasshome-ci, such as the one a standby host waits on.";
+      description = "Labels beside glasshome-ci.";
     };
 
     standbyFor = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = "Label of preferred runners: this host registers only while none of them is online and idle.";
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "ci-b-1" ];
+      description = "Names of preferred runners: this host registers only while none of them is online and idle.";
     };
 
     memoryPerRunner = lib.mkOption {
@@ -378,7 +372,7 @@ in
                 ];
                 TimeoutStartSec = lib.mkDefault "15min";
               }
-              (lib.mkIf (cfg.standbyFor != null) {
+              (lib.mkIf (cfg.standbyFor != [ ]) {
                 ExecStartPre = lib.mkBefore [ "+${standby}" ];
                 TimeoutStartSec = "infinity";
               })
