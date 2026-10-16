@@ -13,15 +13,24 @@
     { nixpkgs, disko, ... }:
     let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
-      runnerNames =
-        host: map (i: "${host}-${toString i}") (nixpkgs.lib.range 1 hosts.${host}.count);
-      # ci-b takes jobs first; ci-a registers only while every ci-b runner is busy or offline.
+      # GitHub cannot filter runners by label, only by name, so a label resolves to names here.
+      runnersLabelled =
+        label:
+        nixpkgs.lib.concatLists (
+          nixpkgs.lib.mapAttrsToList (
+            host: runners:
+            nixpkgs.lib.optionals (builtins.elem label (runners.labels or [ ])) (
+              map (i: "${host}-${toString i}") (nixpkgs.lib.range 1 runners.count)
+            )
+          ) hosts
+        );
+      # fast runners take jobs first; ci-a registers only while every one is busy or offline.
       hosts = {
         # 10 GB VM, 4 vCPU.
         ci-a = {
           count = 2;
           memoryPerRunner = "4500M";
-          standbyFor = runnerNames "ci-b";
+          standbyFor = runnersLabelled "fast";
         };
         # 10.5 GB VM, 16 vCPU, on the travelling mini PC beside the 2 GB HA test VM.
         ci-b = {
