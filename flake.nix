@@ -29,7 +29,7 @@
         # 10 GB VM, 4 vCPU.
         ci-a = {
           count = 2;
-          memoryPerRunner = "4500M";
+          memoryPerRunner = "3000M";
           standbyFor = runnersLabelled "fast";
         };
         # 10.5 GB VM, 16 vCPU, on the travelling mini PC beside the 2 GB HA test VM.
