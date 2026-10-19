@@ -133,11 +133,12 @@ in
     { nodes, ... }:
     let
       runner = nodes.machine.services.github-runners.ci-runner-1.package;
+      # hashFiles() runs <runner root>/externals/node20 on runner 2.337 (the relinked copy), node24 from 2.338.
+      hashNode = if pkgs.lib.versionAtLeast runner.version "2.338" then "node24" else "node20";
     in
     ''
     start_all()
-    # hashFiles() runs <runner root>/externals/node20 on runner 2.337.
-    machine.succeed("${runner}/lib/externals/node20/bin/node -e 1 && test -e ${runner}/lib/github-runner/hashFiles")
+    machine.succeed("${runner}/lib/externals/${hashNode}/bin/node -e 1 && test -e ${runner}/lib/github-runner/hashFiles")
     machine.wait_for_unit("multi-user.target")
     machine.succeed("test \"$(sysctl -n vm.overcommit_memory)\" = 1")
     machine.succeed("grep -qx 'flags: PF' /proc/sys/fs/binfmt_misc/aarch64-linux")
