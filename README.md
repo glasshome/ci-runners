@@ -22,7 +22,7 @@ One CI job needs 3 GB of memory. With `count` above 1, set `memoryPerRunner` so 
 ## Flashing a host
 
 1. `./image.sh <host> ~/<host>.img`. It asks for the runner PAT and an optional console root password, and writes a fully allocated raw disk (24 GB) with both inside.
-2. Import it as the system disk of a new VM: 2 or more vCPUs, 5 GB RAM per runner, no shared folders. Grow the disk to 60 GB if the hypervisor allows; the root partition follows on boot.
+2. Import it as the system disk of a new VM: 2 or more vCPUs, 5 GB RAM per runner, no shared folders. Grow the disk to 100 GB if the hypervisor allows; the root partition follows on boot. 60 GB filled up when a release built both image architectures at once beside the runners' 72 h image cache (2026-10-19). A running VM grows online: resize the virtual disk, then `growpart /dev/vda 3` and `resize2fs /dev/vda3` inside it.
 3. Boot it and delete the `.img`. The runners appear under the organization's Settings, Actions, Runners.
 
 A host that travels must not start its VM on boot: a runner online on a foreign network joins the pool and takes jobs.
