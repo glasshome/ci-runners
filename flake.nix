@@ -24,11 +24,13 @@
             )
           ) hosts
         );
-      # fast runners take jobs first; ci-a registers only while every one is busy or offline.
+      # Every job runs on a fast runner and queues when all are busy. ci-a stays defined with no
+      # runners: its 4 vCPU run the journeys twice as long as ci-b and they time out (2026-11-02).
+      # Raise count to bring it back as a standby.
       hosts = {
         # 10 GB VM, 4 vCPU.
         ci-a = {
-          count = 2;
+          count = 0;
           memoryPerRunner = "3000M";
           standbyFor = runnersLabelled "fast";
         };

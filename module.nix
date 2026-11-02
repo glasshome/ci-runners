@@ -129,9 +129,9 @@ in
     enable = lib.mkEnableOption "glasshome self-hosted GitHub Actions runners";
 
     count = lib.mkOption {
-      type = lib.types.ints.between 1 9;
+      type = lib.types.ints.between 0 9;
       default = 1;
-      description = "Runners on this host; each takes one job at a time.";
+      description = "Runners on this host; each takes one job at a time. 0 leaves the host defined with none.";
     };
 
     tokenFile = lib.mkOption {
