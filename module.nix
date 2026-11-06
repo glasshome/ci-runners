@@ -342,6 +342,8 @@ in
           serviceOverrides = import ./sandbox.nix { home = homeOf i; } // {
             Restart = lib.mkForce "always";
             RestartSec = "30s";
+            # A bind mount on workDir makes it a different mount than the bun cache in the runner's home, so link(2) returns EXDEV and bun copies every package; ReadWritePaths already covers it.
+            BindPaths = lib.mkForce [ ];
             # The module denies capset; Chromium's zygote calls it to drop capabilities and cannot fork
             # without it. Granting it adds nothing: the bounding set is empty and NoNewPrivileges holds.
             SystemCallFilter = lib.mkAfter [ "capset" ];

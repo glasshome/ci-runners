@@ -151,6 +151,7 @@ in
     machine.succeed("journalctl -u ci-runner-prune-1 --no-pager | grep -q 'pruning the whole store'")
     machine.succeed("test -z \"$(runuser -u ci-runner-1 -- env XDG_RUNTIME_DIR=/run/user/$(id -u ci-runner-1) podman images -q)\"")
     machine.succeed("test \"$(stat -c %U /var/lib/ci-runner-1/work)\" = ci-runner-1")
+    machine.succeed("systemctl show github-runner-ci-runner-1 -p BindPaths --value | grep -qx ''")
     lan.wait_for_open_port(8000)
     lan.succeed("ip -4 addr | grep -q 192.168.1.1/")
     machine.fail("curl -fsS -m 5 http://192.168.1.1:8000/")
