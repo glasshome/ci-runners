@@ -421,7 +421,7 @@ in
                 ${docker}/bin/docker system prune --all --force --filter until=72h
               fi
               ${docker}/bin/docker volume prune --force
-              find /var/tmp -maxdepth 1 -user ${userOf i} -name 'container_images_*' -mmin +360 -exec rm -rf {} + 2>/dev/null || true
+              find /var/tmp -maxdepth 1 -user ${userOf i} \( -name 'container_images_*' -o -name 'buildah*' \) -mmin +360 -exec rm -rf {} + 2>/dev/null || true
               find ${homeOf i}/.bun/install/cache -mindepth 1 -maxdepth 1 -atime +30 -exec rm -rf {} + 2>/dev/null || true
             '';
           };
