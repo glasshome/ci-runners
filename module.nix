@@ -341,7 +341,8 @@ in
           # Registration fails on any network blip; an unattended host retries forever.
           serviceOverrides = import ./sandbox.nix { home = homeOf i; } // {
             Restart = lib.mkForce "always";
-            RestartSec = "30s";
+            # Also the gap after every clean job, while the next one queues.
+            RestartSec = "5s";
             # A bind mount on workDir makes it a different mount than the bun cache in the runner's home, so link(2) returns EXDEV and bun copies every package; ReadWritePaths already covers it.
             BindPaths = lib.mkForce [ ];
             # The module denies capset; Chromium's zygote calls it to drop capabilities and cannot fork
