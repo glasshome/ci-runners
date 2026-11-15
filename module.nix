@@ -419,7 +419,8 @@ in
                 echo "''${free}G free, under ${toString minFreeGiB}G: pruning the whole store"
                 ${docker}/bin/docker system prune --all --force
               else
-                ${docker}/bin/docker system prune --all --force --filter until=72h
+                # Untagged images only: until= reads an image's build date, which for a pulled image is weeks old on its first day here.
+                ${docker}/bin/docker system prune --force --filter until=72h
               fi
               ${docker}/bin/docker volume prune --force
               find /var/tmp -maxdepth 1 -user ${userOf i} \( -name 'container_images_*' -o -name 'buildah*' \) -mmin +360 -exec rm -rf {} + 2>/dev/null || true
