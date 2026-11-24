@@ -337,6 +337,10 @@ in
             # Podman's default OCI format drops HEALTHCHECK.
             BUILDAH_FORMAT = "docker";
             HOME = homeOf i;
+          }
+          # dash's gates skip their network namespace only where no host address can change under a browser.
+          // lib.optionalAttrs cfg.blockLocalNetwork {
+            NETWORK_DOOR_ABSENT = "IPv6 is off and containers are rootless Podman, so no host address changes; the sandbox restricts namespaces";
           };
           # Registration fails on any network blip; an unattended host retries forever.
           serviceOverrides = import ./sandbox.nix { home = homeOf i; } // {
