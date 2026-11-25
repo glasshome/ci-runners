@@ -26,6 +26,8 @@
   ];
   services.qemuGuest.enable = true;
   zramSwap.enable = true;
+  # Deleted files stay allocated in the hypervisor's thin pool until the guest trims them.
+  services.fstrim.enable = true;
 
   # Console only; image.sh writes the hash, and a blank password leaves root locked.
   users.mutableUsers = false;

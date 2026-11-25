@@ -119,8 +119,8 @@ let
       systemctl reboot
     fi
   '';
-  # Two concurrent image builds unpack base layers and node_modules into the store and /var/tmp.
-  minFreeGiB = 15;
+  # A home image build holds its node_modules layer up to three times while it commits, beside another runner's build.
+  minFreeGiB = 25;
   userOf = i: "ci-runner-${toString i}";
   homeOf = i: "/var/lib/${userOf i}";
 in
@@ -376,6 +376,7 @@ in
                 ExecStartPre = lib.mkAfter [
                   dropBrokenBrowsers
                   "-+${pkgs.systemd}/bin/systemctl start ci-runner-prune-${toString i}.service"
+                  "-+${pkgs.systemd}/bin/systemctl start ci-runner-reclaim.service"
                 ];
                 TimeoutStartSec = lib.mkDefault "15min";
               }
@@ -433,6 +434,30 @@ in
           };
         }) indices
       ))
+      {
+        ci-runner-reclaim = {
+          description = "Prune idle runners' Podman stores, largest first, until the disk is above the floor";
+          serviceConfig.Type = "oneshot";
+          path = [
+            pkgs.coreutils
+            pkgs.procps
+            pkgs.systemd
+          ];
+          # Each runner prunes only its own store, so stores of runners that sat idle fill the disk under a busy one.
+          script = ''
+            freeGiB() { df --output=avail -B1G / | tail -1 | tr -d ' '; }
+            [ "$(freeGiB)" -ge ${toString minFreeGiB} ] && exit 0
+            for i in $(for i in ${toString indices}; do
+                echo "$(du -xs /var/lib/ci-runner-$i/.local/share/containers 2>/dev/null | cut -f1) $i"
+              done | sort -rn | cut -d' ' -f2); do
+              [ "$(freeGiB)" -ge ${toString minFreeGiB} ] && exit 0
+              pgrep -u ci-runner-$i -f Runner.Worker >/dev/null && continue
+              echo "$(freeGiB)G free, under ${toString minFreeGiB}G: pruning ci-runner-$i's store"
+              systemctl start ci-runner-prune-$i.service || true
+            done
+          '';
+        };
+      }
       (lib.mkIf (cfg.heartbeatUrlFile != null) {
         ci-runner-heartbeat = {
           description = "Report that every CI runner on this host is up";

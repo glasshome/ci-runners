@@ -90,6 +90,7 @@ in
 
       glasshome.ciRunner = {
         enable = true;
+        count = 2;
         tokenFile = "/dev/null";
       };
       services.dockerRegistry = {
@@ -105,6 +106,7 @@ in
       ];
       # No GitHub in the sandbox: keep the runner's unit, never start it.
       systemd.services.github-runner-ci-runner-1.wantedBy = lib.mkForce [ ];
+      systemd.services.github-runner-ci-runner-2.wantedBy = lib.mkForce [ ];
 
       systemd.services.probe = {
         environment = runner.environment // {
@@ -150,6 +152,12 @@ in
     machine.succeed("systemctl start ci-runner-prune-1.service")
     machine.succeed("journalctl -u ci-runner-prune-1 --no-pager | grep -q 'pruning the whole store'")
     machine.succeed("test -z \"$(runuser -u ci-runner-1 -- env XDG_RUNTIME_DIR=/run/user/$(id -u ci-runner-1) podman images -q)\"")
+    # Another runner's store, left full while it sat idle, is pruned too.
+    machine.wait_until_succeeds("test -S /run/user/$(id -u ci-runner-2)/podman/podman.sock")
+    machine.succeed("runuser -u ci-runner-2 -- env XDG_RUNTIME_DIR=/run/user/$(id -u ci-runner-2) podman load -i ${base}")
+    machine.succeed("systemctl start ci-runner-reclaim.service")
+    machine.succeed("journalctl -u ci-runner-reclaim --no-pager | grep -q \"pruning ci-runner-2's store\"")
+    machine.succeed("test -z \"$(runuser -u ci-runner-2 -- env XDG_RUNTIME_DIR=/run/user/$(id -u ci-runner-2) podman images -q)\"")
     machine.succeed("test \"$(stat -c %U /var/lib/ci-runner-1/work)\" = ci-runner-1")
     machine.succeed("test -z \"$(systemctl show github-runner-ci-runner-1 -p BindPaths --value)\"")
     lan.wait_for_open_port(8000)

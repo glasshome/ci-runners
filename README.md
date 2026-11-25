@@ -6,7 +6,7 @@ NixOS configuration for the self-hosted GitHub Actions runners of the glasshome 
 
 - `docker` is `podman --remote` on the runner user's own Podman socket. Use the plain CLI (`build`, `run`, `port`, `logs`, `login`, `push`, `rm`); BuildKit actions such as `docker/build-push-action` do not work.
 - `BUILDAH_FORMAT=docker` is set, so images keep their `HEALTHCHECK`.
-- Runners on one host share a Podman store: name containers per run, remove them in an `if: always()` step, and publish to random ports (`-p 127.0.0.1::PORT`, then `docker port`).
+- Each runner has its own Podman store, but runners on one host share its disk and ports: name containers per run, remove them in an `if: always()` step, and publish to random ports (`-p 127.0.0.1::PORT`, then `docker port`).
 - Nothing but the job's own `GITHUB_TOKEN`; keep jobs that need other secrets on GitHub-hosted runners.
 - Tools beyond the base system come from `extraPackages` in `module.nix`.
 
